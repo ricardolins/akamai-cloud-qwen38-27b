@@ -31,6 +31,7 @@ function load(tag) {
 }
 const tp4 = [...load("tp4"), ...load("tp4-262k"), ...load("tp4-sweep")];
 const tp1 = [...load("tp1"), ...load("tp1-sweep")];
+const swept = (rows) => rows.some((r) => r.inp === 10000 && r.c >= 16);
 const single = (rows) => rows.filter((r) => r.c === 1).sort((a, b) => a.inp - b.inp);
 const conc = (rows) => rows.filter((r) => r.inp === 10000).sort((a, b) => a.c - b.c);
 const find = (rows, inp, c) => rows.find((r) => r.inp === inp && r.c === c);
@@ -135,6 +136,10 @@ body.push(B([{ text: "TTFT is bound by prefill compute, not by the number of GPU
 body.push(B([{ text: "Long context works up to the native 262k limit: ", bold: true },
   `240k-token prompt: TTFT ${fmt(find(tp4, 240000, 1) && find(tp4, 240000, 1).ttft50 / 1000, 1)} s and ${fmt(find(tp4, 240000, 1) && find(tp4, 240000, 1).tpsUser)} tok/s per user on TP=4. The hybrid architecture (48 of 64 layers use linear attention) keeps decode speed almost flat with context.`]));
 const c4 = find(tp4, 10000, 4), c8 = find(tp4, 10000, 8);
+const peak = (rows) => { const r = conc(rows); return r.length ? r.reduce((a, b) => (b.tpsTotal > a.tpsTotal ? b : a)) : null; };
+const p4 = peak(tp4), p1 = peak(tp1);
+if (swept(tp4) && swept(tp1)) body.push(B([{ text: "Under load, one GPU outserves four: ", bold: true },
+  `TP=4 peaks at ${fmt(p4.tpsTotal)} output tok/s (${p4.c} users) and settles at ~${fmt(Math.min(...conc(tp4).filter((x) => x.c >= 16).map((x) => x.tpsTotal)))}–${fmt(Math.max(...conc(tp4).filter((x) => x.c >= 16).map((x) => x.tpsTotal)))} tok/s beyond that, while a single GPU with TP=1 reaches ~${fmt(p1.tpsTotal)} tok/s (${p1.c} users). For many concurrent users, four independent TP=1 replicas (one per GPU) are the throughput-optimal layout — estimated ~${fmt(4 * p1.tpsTotal)} tok/s per server (estimate, not measured).`]));
 body.push(B([{ text: "Concurrency: ", bold: true },
   `with 10k prompts TP=4 keeps ≥35 tok/s per user up to 4 concurrent users (${fmt(c4 && c4.tpsUser)} tok/s); at 8 users it drops to ${fmt(c8 && c8.tpsUser)} tok/s.`]));
 
@@ -192,7 +197,6 @@ body.push(H2("4.1 TP=4"));
 body.push(concTable(conc(tp4)));
 body.push(H2("4.2 TP=1"));
 body.push(concTable(conc(tp1)));
-const swept = (rows) => conc(rows).some((r) => r.c >= 16);
 const plateauNote = (rows, name) => {
   const r = conc(rows); if (!swept(rows)) return note(`${name}: concurrency sweep (16–128 users) in progress — this section updates when it completes.`);
   const best = r.reduce((a, b) => (b.tpsTotal > a.tpsTotal ? b : a));
@@ -204,6 +208,21 @@ body.push(H2("4.3 Throughput plateau"));
 body.push(plateauNote(tp4, "TP=4"));
 body.push(plateauNote(tp1, "TP=1"));
 body.push(note("Green: per-user speed ≥ 35 tok/s (target). Orange: below target. Requests per level = 2× concurrency for levels ≥ 16 so the server reaches steady state."));
+if (swept(tp4) && swept(tp1)) {
+  body.push(H2("4.4 What the plateau means for deployment"));
+  const ok4 = conc(tp4).filter((x) => x.tpsUser >= 35).pop(), ok1 = conc(tp1).filter((x) => x.tpsUser >= 35).pop();
+  body.push(table(
+    [{ h: "Layout on one 4-GPU server", w: 4 }, { h: "Per-user speed, 1 user (tok/s)", w: 3 }, { h: "Users at ≥35 tok/s each", w: 3 },
+     { h: "Peak total output (tok/s)", w: 3 }, { h: "Basis", w: 4, align: AlignmentType.LEFT }],
+    [
+      ["1× TP=4 (all 4 GPUs, one replica)", fmt(find(tp4, 10000, 1).tpsUser), ok4 ? ok4.c : "none", fmt(p4.tpsTotal), "Measured"],
+      ["4× TP=1 (one replica per GPU)", fmt(find(tp1, 10000, 1).tpsUser), ok1 ? `${ok1.c * 4}` : "none (per-user speed < 35)", `~${fmt(4 * p1.tpsTotal)}`, "Estimated: 4 × measured single-GPU plateau"],
+      ["2× TP=2 (two replicas of 2 GPUs)", "not measured", "not measured", "not measured", "Next test: vLLM's custom all-reduce works on 2 PCIe GPUs (disabled for 4)"],
+    ],
+    { fills: (r, c) => (r === 2 ? "EDEDED" : undefined) },
+  ));
+  body.push(note("TP=4 telemetry under saturation: ~190 W average per GPU at 100% SM busy, i.e. the GPUs mostly wait on the PCIe all-reduce. A single GPU (TP=1) under the same load runs at ~500 W average."));
+}
 
 // 5. GPU telemetry
 body.push(H1("5. GPU telemetry during the runs"));
