@@ -195,7 +195,7 @@ With TP=1, **31.6 GiB** is left for KV → **511,103 tokens** of cache (versus 4
 
 During the first run the **node went down** at 20:47:04 UTC, about 3 minutes into the benchmark (10k scenario, single user). The VM stopped responding (no ping, kubelet gone). Kubernetes marked the node `NotReady` and evicted the pod. **The cause was an Akamai host issue**, confirmed by the account owner. After the node rebooted, vLLM came back on its own (the model was still on local disk), and the benchmark was re-run from scratch.
 
-Telemetry from the following runs also rules out power and temperature: peak **381 W** (of a 600 W limit), at most **62 °C**, clock stable at ~2.4 GHz, no throttling.
+Telemetry from the following runs: with **TP=4** the GPUs peaked at **381 W** (of a 600 W limit) and **62 °C**, clock stable at ~2.4 GHz. With **TP=1** the single GPU runs **at the 600 W limit** (peaks of 609 W) and up to **78 °C**, with a slightly lower clock (~2.35 GHz), i.e. mild power capping. Neither explains the outages (see `results/node-incidents.md`).
 
 Lessons:
 - On a **single-node** cluster, a host failure takes the whole service down. For production, use at least 2 GPU nodes.

@@ -44,6 +44,6 @@ Source: `journalctl` (persistent journal) of the GPU node, read after recovery w
 |---|---|
 | GPU fault | No `Xid` / `NVRM` errors in the kernel log |
 | PCIe / IOMMU fault (TP=4 peer-to-peer) | No AER / DMAR / IOMMU messages. Incident 2 happened with **TP=1** (no inter-GPU traffic) |
-| Power / thermal | Telemetry: peak 381 W of 600 W, max 62 °C, no clock throttling |
+| Power / thermal | Incident 1 (TP=4): GPUs at ≤381 W of 600 W and ≤62 °C. Incident 2 (TP=1): one GPU at its 600 W limit (~78 °C) is within spec, and a GPU power peak would not press the VM's ACPI power button |
 | Out of memory | No OOM killer, kubelet reported `MemoryPressure False` until shutdown |
 | Kernel crash | No panic / oops / lockup messages |
