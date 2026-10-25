@@ -1,7 +1,8 @@
 #!/bin/bash
 # Latency benchmark for Qwen3.8-27B on vLLM. Runs INSIDE the vLLM pod (bench client = same image).
 # Fixed-length random prompts + fixed output (--ignore-eos) so TTFT/ITL/TPOT/E2E are comparable across sizes.
-# Usage: bench.sh <tag> [output_len] [set]   set = main (default) | 240k | all
+# Usage: bench.sh <tag> [output_len] [set]   set = main (default) | 240k | all | sweep
+#   sweep: 10k prompt at concurrency 16..128 to find the throughput plateau
 #   240k needs the server started with --max-model-len >= 262144
 set -euo pipefail
 TAG=${1:-baseline}; OUT=${2:-512}; SET=${3:-main}
@@ -32,5 +33,9 @@ fi
 if [[ $SET == 240k || $SET == all ]]; then
 # very long context: 240k prompt (close to the 262,144 native limit)
 run 240000 1 3
+fi
+if [[ $SET == sweep ]]; then
+# throughput plateau: keep doubling concurrency; 2x requests per level so it reaches steady state
+for C in ${SWEEP:-16 32 64 128}; do run 10000 "$C" $((C * 2)); done
 fi
 echo "=== done $(date -u +%T)"
