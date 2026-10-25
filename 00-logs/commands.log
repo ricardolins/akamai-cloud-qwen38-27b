@@ -12,3 +12,6 @@ deployment.apps/qwen38-27b-tp1 created
 service/qwen38-27b-tp1 created
 deployment.apps/qwen38-27b-tp1 configured
 service/qwen38-27b-tp1 unchanged
+deployment.apps/qwen38-27b-tp1 scaled
+deployment.apps/qwen38-27b scaled
+- 2026-10-25T22:56:58Z second outage 22:30:24Z = platform ACPI power-off (see results/node-incidents.md); resuming with TP=4 concurrency sweep
