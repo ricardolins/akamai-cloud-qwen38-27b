@@ -4,3 +4,11 @@ service/qwen38-27b created
 applied at 2026-10-25T20:34:24Z
 deployment.apps/qwen38-27b configured
 service/qwen38-27b unchanged
+- 2026-10-25T21:24:43Z node lke668154 NotReady 20:47:04Z-~21:19Z (Akamai host issue, confirmed by account owner); TP=4 benchmark restarted from scratch
+deployment.apps/qwen38-27b configured
+service/qwen38-27b unchanged
+deployment.apps/qwen38-27b scaled
+deployment.apps/qwen38-27b-tp1 created
+service/qwen38-27b-tp1 created
+deployment.apps/qwen38-27b-tp1 configured
+service/qwen38-27b-tp1 unchanged

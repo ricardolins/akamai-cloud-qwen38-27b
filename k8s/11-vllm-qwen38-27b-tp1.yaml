@@ -21,10 +21,11 @@ spec:
         - Qwen/Qwen3.8-27B                 # model (positional, as vLLM >= 0.30 expects)
         - --served-model-name=qwen3.8-27b
         - --tensor-parallel-size=1        # whole model on ONE GPU
-        - --max-model-len=131072          # 120k prompt + output
+        - --max-model-len=262144          # native limit: fits the 240k prompt + output
         - --language-model-only           # text benchmark: skip the vision tower
         - --reasoning-parser=qwen3
         - --gpu-memory-utilization=0.90
+        - --max-num-seqs=256              # one GPU only has ~640 linear-attention state blocks; default 1024 fails
         - --no-enable-prefix-caching      # every benchmark prompt must be prefilled for real
         - --port=8000
         env:

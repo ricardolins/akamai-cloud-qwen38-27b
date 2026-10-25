@@ -1,0 +1,15 @@
+=== 21:42:33 in240000_out512_c1
+Successful requests:                     3         
+Benchmark duration (s):                  165.08    
+Output token throughput (tok/s):         9.30      
+Mean TTFT (ms):                          46704.40  
+Median TTFT (ms):                        46724.94  
+P99 TTFT (ms):                           47246.18  
+Mean TPOT (ms):                          16.28     
+Median TPOT (ms):                        16.27     
+Mean ITL (ms):                           16.54     
+Median ITL (ms):                         16.58     
+P99 ITL (ms):                            16.82     
+Mean E2EL (ms):                          55022.82  
+Median E2EL (ms):                        55032.55  
+=== done 21:46:31

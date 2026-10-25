@@ -21,7 +21,7 @@ spec:
         - Qwen/Qwen3.8-27B                 # model (positional, as vLLM >= 0.30 expects)
         - --served-model-name=qwen3.8-27b
         - --tensor-parallel-size=4        # split every layer across the 4 GPUs
-        - --max-model-len=131072          # 120k prompt + output
+        - --max-model-len=262144          # native limit: fits the 240k prompt + output
         - --language-model-only           # text benchmark: skip the vision tower
         - --reasoning-parser=qwen3
         - --gpu-memory-utilization=0.90

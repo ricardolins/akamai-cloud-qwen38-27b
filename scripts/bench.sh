@@ -1,9 +1,10 @@
 #!/bin/bash
 # Latency benchmark for Qwen3.8-27B on vLLM. Runs INSIDE the vLLM pod (bench client = same image).
 # Fixed-length random prompts + fixed output (--ignore-eos) so TTFT/ITL/TPOT/E2E are comparable across sizes.
-# Usage: bench.sh <tag> [output_len]
+# Usage: bench.sh <tag> [output_len] [set]   set = main (default) | 240k | all
+#   240k needs the server started with --max-model-len >= 262144
 set -euo pipefail
-TAG=${1:-baseline}; OUT=${2:-512}
+TAG=${1:-baseline}; OUT=${2:-512}; SET=${3:-main}
 DIR=/models/results/$TAG; mkdir -p "$DIR"
 run() {  # run <input_len> <concurrency> <num_prompts>
   local IN=$1 C=$2 N=$3 NAME="in${1}_out${OUT}_c${2}"
@@ -17,6 +18,7 @@ run() {  # run <input_len> <concurrency> <num_prompts>
     --save-result --result-dir "$DIR" --result-filename "$NAME.json" 2>&1 \
     | grep -E "Successful requests|Benchmark duration|Output token throughput|Mean TTFT|Median TTFT|P99 TTFT|Mean TPOT|Median TPOT|Mean ITL|Median ITL|P99 ITL|Mean E2EL|Median E2EL" 
 }
+if [[ $SET == main || $SET == all ]]; then
 # single user (latency): the four prompt sizes requested
 run 8000   1 10
 run 10000  1 10
@@ -26,4 +28,9 @@ run 120000 1 5
 run 10000  2 10
 run 10000  4 16
 run 10000  8 24
+fi
+if [[ $SET == 240k || $SET == all ]]; then
+# very long context: 240k prompt (close to the 262,144 native limit)
+run 240000 1 3
+fi
 echo "=== done $(date -u +%T)"
