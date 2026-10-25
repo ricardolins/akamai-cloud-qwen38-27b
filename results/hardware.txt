@@ -1,0 +1,36 @@
+## nvidia-smi
+index, name, driver_version, memory.total [MiB], power.limit [W], clocks.max.sm [MHz], pcie.link.gen.max, pcie.link.width.max
+0, NVIDIA RTX PRO 6000 Blackwell Server Edition, 615.71.10, 97887 MiB, 600.00 W, 2430 MHz, 5, 16
+1, NVIDIA RTX PRO 6000 Blackwell Server Edition, 615.71.10, 97887 MiB, 600.00 W, 2430 MHz, 5, 16
+2, NVIDIA RTX PRO 6000 Blackwell Server Edition, 615.71.10, 97887 MiB, 600.00 W, 2430 MHz, 5, 16
+3, NVIDIA RTX PRO 6000 Blackwell Server Edition, 615.71.10, 97887 MiB, 600.00 W, 2430 MHz, 5, 16
+
+## topology
+	[4mGPU0	GPU1	GPU2	GPU3	CPU Affinity	NUMA Affinity	GPU NUMA ID[0m
+GPU0	 X 	PHB	PHB	PHB	0-63	0		N/A
+GPU1	PHB	 X 	PHB	PHB	0-63	0		N/A
+GPU2	PHB	PHB	 X 	PHB	0-63	0		N/A
+GPU3	PHB	PHB	PHB	 X 	0-63	0		N/A
+
+Legend:
+
+  X    = Self
+  SYS  = Connection traversing PCIe as well as the SMP interconnect between NUMA nodes (e.g., QPI/UPI)
+  NODE = Connection traversing PCIe as well as the interconnect between PCIe Host Bridges within a NUMA node
+  PHB  = Connection traversing PCIe as well as a PCIe Host Bridge (typically the CPU)
+  PXB  = Connection traversing multiple PCIe bridges (without traversing the PCIe Host Bridge)
+  PIX  = Connection traversing at most a single PCIe bridge
+  NV#  = Connection traversing a bonded set of # NVLinks
+
+## NVLink
+GPU 0: NVIDIA RTX PRO 6000 Blackwell Server Edition (UUID: GPU-c53fdead-a35c-1fa6-7e27-58292ccc961a)
+Device does not have or support Nvlink
+GPU 1: NVIDIA RTX PRO 6000 Blackwell Server Edition (UUID: GPU-efaff3be-d77a-8155-6a0c-9d2d8cfd8916)
+
+## CPU / RAM
+64
+               total        used        free      shared  buff/cache   available
+Mem:             692          37         568          10         101         655
+
+## vLLM
+vllm 0.32.0 torch 2.13.0+cu130 cuda 13.0

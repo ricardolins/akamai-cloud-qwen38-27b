@@ -1,0 +1,63 @@
+# Comparison run: same model and flags, TP=1 (one RTX PRO 6000, 96 GB). One replica is enough to measure per-request latency.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qwen38-27b-tp1
+  namespace: llm-bench
+  labels: {app: qwen38-27b-tp1}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}            # one replica on one GPU
+  selector:
+    matchLabels: {app: qwen38-27b-tp1}
+  template:
+    metadata:
+      labels: {app: qwen38-27b-tp1}
+    spec:
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:v0.32.0
+        args:
+        - Qwen/Qwen3.8-27B                 # model (positional, as vLLM >= 0.30 expects)
+        - --served-model-name=qwen3.8-27b
+        - --tensor-parallel-size=1        # whole model on ONE GPU
+        - --max-model-len=131072          # 120k prompt + output
+        - --language-model-only           # text benchmark: skip the vision tower
+        - --reasoning-parser=qwen3
+        - --gpu-memory-utilization=0.90
+        - --no-enable-prefix-caching      # every benchmark prompt must be prefilled for real
+        - --port=8000
+        env:
+        - {name: HF_HOME, value: /models/hf}
+        - {name: VLLM_LOGGING_LEVEL, value: INFO}
+        ports:
+        - {containerPort: 8000, name: http}
+        resources:
+          limits: {nvidia.com/gpu: 1}
+          requests: {nvidia.com/gpu: 1, cpu: "8", memory: 64Gi}
+        readinessProbe:
+          httpGet: {path: /health, port: 8000}
+          periodSeconds: 10
+          failureThreshold: 3
+        startupProbe:                     # first start downloads ~56 GB and compiles CUDA graphs
+          httpGet: {path: /health, port: 8000}
+          periodSeconds: 15
+          failureThreshold: 160           # up to 40 min
+        volumeMounts:
+        - {name: models, mountPath: /models}
+        - {name: shm, mountPath: /dev/shm}
+      volumes:
+      - name: models                      # local NVMe of the GPU node; survives pod restarts
+        hostPath: {path: /var/lib/llm-models, type: DirectoryOrCreate}
+      - name: shm                         # NCCL needs a large /dev/shm for tensor parallelism
+        emptyDir: {medium: Memory, sizeLimit: 32Gi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: qwen38-27b-tp1
+  namespace: llm-bench
+spec:
+  selector: {app: qwen38-27b-tp1}
+  ports:
+  - {port: 8000, targetPort: http, name: http}

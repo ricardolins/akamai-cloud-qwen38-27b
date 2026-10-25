@@ -1,0 +1,6 @@
+namespace/llm-bench created
+deployment.apps/qwen38-27b created
+service/qwen38-27b created
+applied at 2026-10-25T20:34:24Z
+deployment.apps/qwen38-27b configured
+service/qwen38-27b unchanged
