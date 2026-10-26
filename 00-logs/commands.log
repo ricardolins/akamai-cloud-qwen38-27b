@@ -18,3 +18,5 @@ deployment.apps/qwen38-27b scaled
 deployment.apps/qwen38-27b scaled
 deployment.apps/qwen38-27b-tp1 scaled
 deployment.apps/qwen38-27b-tp1 scaled
+namespace "llm-bench" deleted
+- 2026-10-26T00:04:24Z cleanup: namespace llm-bench deleted; vllm image removed from node (ctr); model cache /var/lib/llm-models (52G) left on node
