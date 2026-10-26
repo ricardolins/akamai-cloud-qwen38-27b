@@ -307,7 +307,7 @@ if (Q[1][1].length) {
     const base = quality.find((q) => q.t === "bf16");
     body.push(table([{ h: "Precision", w: 2 }, { h: "Questions", w: 2 }, { h: "Correct", w: 2 }, { h: "Accuracy", w: 2 }, { h: "vs BF16", w: 2 }],
       quality.map((q) => [q.t.toUpperCase(), q.n, q.correct, `${fmt(q.accuracy * 100, 1)}%`, base ? `${q.accuracy >= base.accuracy ? "+" : ""}${fmt((q.accuracy - base.accuracy) * 100, 1)} pts` : "—"])));
-    body.push(note("First 250 GSM8K test questions, temperature 0, thinking disabled, exact numeric match. A sanity check of quantization loss on short prompts, not a full evaluation; long-context quality was not evaluated."));
+    body.push(note("First 250 GSM8K test questions, temperature 0, thinking disabled, exact numeric match. The 95% margin of error is about ±3 points, so all three are statistically tied: no measurable quantization loss, and NVFP4 scoring slightly higher is noise, not an improvement. Short prompts only; long-context quality was not evaluated. Published 4-bit results for this model show ~1–4% loss on hard reasoning (AIME)."));
   }
   // cost vs H100
   body.push(H2("5.5 Cost vs 2× H100 (Oracle Cloud) for the ~122k workload"));

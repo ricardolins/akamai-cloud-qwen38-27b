@@ -30,3 +30,4 @@ deployment.apps/qwen-fp8-mtp scaled
 deployment.apps/qwen-nvfp4-mtp scaled
 deployment.apps/qwen38-27b-tp1 created
 service/qwen38-27b-tp1 created
+- 2026-10-26T01:38:57Z cleanup (quant round): namespace llm-bench deleted; FP8 + NVFP4 removed from HF cache via huggingface_hub (57.3 GB freed; BF16 cache 55.6 GB kept as before); vllm image removed; debug pods deleted
