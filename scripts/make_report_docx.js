@@ -32,6 +32,9 @@ function load(tag) {
 const tp4 = [...load("tp4"), ...load("tp4-262k"), ...load("tp4-sweep")];
 const tp1 = [...load("tp1"), ...load("tp1-sweep")];
 const swept = (rows) => rows.some((r) => r.inp === 10000 && r.c >= 16);
+// Largest measured concurrency (10k prompt) meeting TTFT p99 <= ttftMs and per-user speed >= tps
+const SLO = { ttftMs: 16000, tps: 25 };
+const capacity = (rows) => conc(rows).filter((r) => r.ttft99 <= SLO.ttftMs && r.tpsUser >= SLO.tps).reduce((m, r) => Math.max(m, r.c), 0);
 const single = (rows) => rows.filter((r) => r.c === 1).sort((a, b) => a.inp - b.inp);
 const conc = (rows) => rows.filter((r) => r.inp === 10000).sort((a, b) => a.c - b.c);
 const find = (rows, inp, c) => rows.find((r) => r.inp === inp && r.c === c);
@@ -140,6 +143,11 @@ const peak = (rows) => { const r = conc(rows); return r.length ? r.reduce((a, b)
 const p4 = peak(tp4), p1 = peak(tp1);
 if (swept(tp4) && swept(tp1)) body.push(B([{ text: "Under load, one GPU outserves four: ", bold: true },
   `TP=4 peaks at ${fmt(p4.tpsTotal)} output tok/s (${p4.c} users) and settles at ~${fmt(Math.min(...conc(tp4).filter((x) => x.c >= 16).map((x) => x.tpsTotal)))}–${fmt(Math.max(...conc(tp4).filter((x) => x.c >= 16).map((x) => x.tpsTotal)))} tok/s beyond that, while a single GPU with TP=1 reaches ~${fmt(p1.tpsTotal)} tok/s (${p1.c} users). For many concurrent users, four independent TP=1 replicas (one per GPU) are the throughput-optimal layout — estimated ~${fmt(4 * p1.tpsTotal)} tok/s per server (estimate, not measured).`]));
+{
+  const c4cap = capacity(tp4), c1cap = capacity(tp1);
+  body.push(B([{ text: `Sizing for TTFT ≤ ${SLO.ttftMs / 1000} s and ≥ ${SLO.tps} tok/s per user (10k prompt): `, bold: true },
+    `TP=4 serves ${c4cap} concurrent users per 4-GPU server (${fmt(4 / c4cap, 2)} GPU per user); TP=1 serves ${c1cap} per GPU (${fmt(1 / c1cap, 2)} GPU per user). TP=4 needs half the GPUs for this target.`]));
+}
 body.push(B([{ text: "Concurrency: ", bold: true },
   `with 10k prompts TP=4 keeps ≥35 tok/s per user up to 4 concurrent users (${fmt(c4 && c4.tpsUser)} tok/s); at 8 users it drops to ${fmt(c8 && c8.tpsUser)} tok/s.`]));
 
@@ -222,6 +230,34 @@ if (swept(tp4) && swept(tp1)) {
     { fills: (r, c) => (r === 2 ? "EDEDED" : undefined) },
   ));
   body.push(note("TP=4 telemetry under saturation: ~190 W average per GPU at 100% SM busy, i.e. the GPUs mostly wait on the PCIe all-reduce. A single GPU (TP=1) under the same load runs at ~500 W average."));
+}
+
+// 4.5 Sizing for an SLO
+{
+  const c4cap = capacity(tp4), c1cap = capacity(tp1);
+  body.push(H2(`4.5 Sizing for TTFT ≤ ${SLO.ttftMs / 1000} s and ≥ ${SLO.tps} tok/s per user (10k prompt)`));
+  body.push(P(`A concurrency level passes when TTFT p99 ≤ ${SLO.ttftMs / 1000} s (worst case, not just the median) and per-user generation speed ≥ ${SLO.tps} tok/s.`));
+  const levels = [...new Set([...conc(tp4), ...conc(tp1)].map((r) => r.c))].filter((c) => c <= 16).sort((a, b) => a - b);
+  const mark = (r) => (r ? (r.ttft99 <= SLO.ttftMs && r.tpsUser >= SLO.tps ? "pass" : "fail") : "—");
+  body.push(table(
+    [{ h: "Concurrent users", w: 2 }, { h: "TP=4 TTFT p50 / p99 (s)", w: 3 }, { h: "TP=4 tok/s per user", w: 2 }, { h: "TP=4", w: 1, align: AlignmentType.CENTER },
+     { h: "TP=1 TTFT p50 / p99 (s)", w: 3 }, { h: "TP=1 tok/s per user", w: 2 }, { h: "TP=1", w: 1, align: AlignmentType.CENTER }],
+    levels.map((c) => { const a = find(tp4, 10000, c), b = find(tp1, 10000, c);
+      return [c, a ? `${fmt(a.ttft50 / 1000, 1)} / ${fmt(a.ttft99 / 1000, 1)}` : "—", a ? fmt(a.tpsUser, 1) : "—", mark(a),
+              b ? `${fmt(b.ttft50 / 1000, 1)} / ${fmt(b.ttft99 / 1000, 1)}` : "—", b ? fmt(b.tpsUser, 1) : "—", mark(b)]; }),
+    { fills: (ri, ci) => { const c = levels[ri]; const r = ci === 3 ? find(tp4, 10000, c) : ci === 6 ? find(tp1, 10000, c) : null;
+      return r ? (mark(r) === "pass" ? C.good : C.bad) : undefined; } },
+  ));
+  body.push(gap());
+  const perServer4 = c4cap, perServer1 = c1cap * 4;
+  body.push(table(
+    [{ h: "Concurrent users to serve", w: 3 }, { h: `TP=4 (${perServer4} users per 4-GPU server)`, w: 4 }, { h: `TP=1 (${c1cap} user per GPU, ${perServer1} per server)`, w: 4 }],
+    [8, 40, 100].map((n) => { const s4 = Math.ceil(n / perServer4), s1 = Math.ceil(n / perServer1);
+      return [n, `${s4 * 4} GPUs (${s4} server${s4 > 1 ? "s" : ""})`, `${s1 * 4} GPUs (${s1} server${s1 > 1 ? "s" : ""})`]; }),
+    { fills: (r, c) => (c === 1 ? C.good : undefined) },
+  ));
+  const b2 = find(tp1, 10000, 2);
+  body.push(note(`"Concurrent users" = requests in flight at the same time. At ${perServer4} concurrent requests a TP=4 server completes ~${fmt(perServer4 / find(tp4, 10000, perServer4).e2e50, 2)} requests/s (~${fmt(3600 * perServer4 / find(tp4, 10000, perServer4).e2e50)} per hour). Levels between 8 and 16 were not measured, so TP=4 capacity is between ${perServer4} and ~12; ${perServer4} is the safe measured value. TP=1 at 2 users gives ${fmt(b2 && b2.tpsUser, 1)} tok/s — if that is accepted as 25, TP=1 matches TP=4 (8 users per server). Valid for 10k prompts with 512-token answers; FP8 weights would likely raise TP=1 capacity (not measured).`));
 }
 
 // 5. GPU telemetry

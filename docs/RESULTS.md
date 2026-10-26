@@ -56,7 +56,35 @@ All numbers are p50 (median) unless stated. Output is fixed at 512 tokens. Raw d
 - **Both** → test 2× TP=2 next.
 - The TTFT target of 16 ms is not achievable for 10k prompts on any of these layouts. Prefill needs ~540 TFLOPs, so TTFT will always be on the order of a second. For sub-second perceived latency, use prefix caching (shared system prompts / documents) or a smaller or quantized model (FP8/NVFP4).
 
-## 5. Infrastructure observations
+## 5. Sizing for TTFT ≤ 16 s and ≥ 25 tok/s per user (10k prompt)
+
+A concurrency level passes when **TTFT p99 ≤ 16 s** (worst case, not just the median) **and** per-user speed **≥ 25 tok/s**.
+
+| Users | TP=4 TTFT p50 / p99 | TP=4 tok/s per user | TP=4 | TP=1 TTFT p50 / p99 | TP=1 tok/s per user | TP=1 |
+|---:|---:|---:|:---:|---:|---:|:---:|
+| 1 | 1.6 / 1.6 s | 71.6 | ✅ | 1.6 / 1.6 s | 26.1 | ✅ |
+| 2 | 2.3 / 3.1 s | 57.0 | ✅ | 2.8 / 3.0 s | 24.8 | ⚠️ just below |
+| 4 | 4.6 / 6.1 s | 50.6 | ✅ | 4.3 / 5.9 s | 22.5 | ❌ |
+| 8 | 6.2 / 12.0 s | 32.1 | ✅ | 5.1 / 11.8 s | 18.0 | ❌ |
+| 16 | 13.5 / 52.5 s | 9.8 | ❌ | 6.1 / 23.5 s | 12.2 | ❌ |
+
+**Capacity per 4-GPU server:** TP=4 → **8 concurrent users** (0.5 GPU per user). TP=1 → 1 user per GPU, so 4 per server (1 GPU per user), or 8 if 24.8 tok/s is accepted as 25.
+
+| Concurrent users | **TP=4** | TP=1 (strict ≥25 tok/s) |
+|---:|---:|---:|
+| 8 | **4 GPUs** (1 server) | 8 GPUs (2 servers) |
+| 40 | **20 GPUs** (5 servers) | 40 GPUs (10 servers) |
+| 100 | **52 GPUs** (13 servers) | 100 GPUs (25 servers) |
+
+**Recommendation for this target: TP=4, one 4-GPU server per 8 concurrent users.** It meets both limits with margin (32 tok/s, worst-case TTFT 12 s). TP=1 sits right at the 25 tok/s edge.
+
+Notes:
+- "Concurrent users" means requests in flight at the same time. At 8 concurrent requests each one takes ~22 s, so a TP=4 server completes ~0.36 requests/s (**~1,300 requests of 10k tokens per hour**).
+- Levels between 8 and 16 were not measured. TP=4 capacity is between 8 and ~12; 8 is the safe measured value.
+- Valid for 10k prompts and 512-token answers. Longer prompts or answers reduce capacity.
+- FP8 weights would likely let TP=1 keep ≥25 tok/s with several users per GPU (estimate, not measured).
+
+## 6. Infrastructure observations
 
 - **Two node outages** during testing, both platform-side (host stall, then an ACPI power-off from the platform). Analysis: [`results/node-incidents.md`](../results/node-incidents.md). Production should use ≥2 GPU nodes.
 - **TP=1 runs one GPU at its 600 W limit** (~78 °C) with a slightly lower clock: mild power capping. TP=4 stays far below the limit.
