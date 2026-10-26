@@ -84,7 +84,62 @@ Notes:
 - Valid for 10k prompts and 512-token answers. Longer prompts or answers reduce capacity.
 - FP8 weights would likely let TP=1 keep ≥25 tok/s with several users per GPU (estimate, not measured).
 
-## 6. Infrastructure observations
+## 6. FP8, NVFP4 and MTP on a single GPU (TP=1)
+
+Blackwell runs FP8 and FP4 (NVFP4) natively. Four TP=1 servers (FP8, FP8+MTP, NVFP4, NVFP4+MTP) ran at the same time, one per GPU. How to reproduce: [GUIDE §4.7](GUIDE.md).
+
+### 6.1 Single user
+
+| Precision (1 GPU) | Weights | TTFT 10k | tok/s per user 10k | TTFT ~122k | tok/s per user ~122k |
+|---|---:|---:|---:|---:|---:|
+| BF16 | 51.7 GiB | 1.56 s | 26.1 | 27.0 s (120k) | 23.1 |
+| **FP8** | 28.0 GiB | 1.03 s | 45.3 | 21.0 s | **37.0** |
+| FP8 + MTP | 28.0 GiB | 1.08 s | **83.0** | 22.3 s | 30.3 |
+| **NVFP4** | 23.2 GiB | **0.78 s** | 51.8 | **18.0 s** | **41.2** |
+| NVFP4 + MTP | 23.2 GiB | 0.82 s | **94.6** | 19.1 s | 34.6 |
+
+- **NVFP4 on one GPU gets close to the customer's H100 numbers** (~16 s and 35–45 tok/s at ~122k): 18.0 s and 41 tok/s.
+- **MTP nearly doubles generation at 10k, but hurts at ~122k.** Draft acceptance was 56–59% (~2.7 tokens per step). At very long context the draft head's attention costs more than it saves. Enable it per workload.
+
+### 6.2 Concurrency with a 10k prompt (per GPU)
+
+| Precision (1 GPU) | 1 user | 2 users | 4 users | 8 users | Peak total |
+|---|---:|---:|---:|---:|---:|
+| BF16 | 26.1 / 1.6 s | 24.8 / 3.0 s | 22.5 / 5.9 s | 18.0 / 11.8 s | 122 tok/s |
+| FP8 | 45.3 / 1.0 s | 41.4 / 2.0 s | 37.4 / 3.8 s | **30.2 / 7.5 s** | 193 tok/s |
+| FP8 + MTP | 83.0 / 1.1 s | 76.1 / 3.7 s | 58.0 / 5.4 s | **40.5 / 9.4 s** | 196 tok/s |
+| NVFP4 | 51.8 / 0.8 s | 46.6 / 1.5 s | 42.1 / 2.9 s | **34.1 / 5.7 s** | 228 tok/s |
+| NVFP4 + MTP | 94.6 / 0.8 s | 96.4 / 3.4 s | 67.8 / 4.5 s | **49.3 / 7.5 s** | 220 tok/s |
+
+Cells show tok/s per user / TTFT p99.
+
+**For the ≥25 tok/s and TTFT ≤ 16 s target, one quantized GPU serves at least 8 concurrent 10k users** (not tested beyond 8). BF16 TP=4 needed a whole 4-GPU server for the same 8. That is **≥4× fewer GPUs**, or ~$0.375/h per concurrent user instead of $1.50/h.
+
+At ~122k, 2 concurrent requests per GPU push TTFT p99 to 36–44 s. For the ~16 s target, plan **1 long request per GPU at a time**.
+
+### 6.3 Quality (GSM8K, 250 questions, temperature 0, thinking off)
+
+| Precision | Correct | Accuracy (95% CI) | Disagreements with BF16 |
+|---|---:|---:|---|
+| BF16 | 232 | 92.8% ±3.2 | — |
+| FP8 | 232 | 92.8% ±3.2 | 4 only BF16 right, 4 only FP8 right |
+| NVFP4 | 239 | 95.6% ±2.5 | 2 only BF16 right, 9 only NVFP4 right |
+
+**No measurable loss** on this check: the differences are within the margin of error, and NVFP4 being slightly higher is noise, not an improvement. This covers short math prompts only. Published 4-bit results for this model show ~1–4% loss on hard reasoning (AIME), and **long-context quality was not evaluated**. Validate on production prompts before choosing NVFP4. FP8 is the low-risk choice.
+
+### 6.4 Cost vs the customer's 2× H100 (Oracle Cloud), ~122k workload
+
+| Option for 2 simultaneous ~122k requests | GPUs | $/hour | $/month | TTFT | Generation | vs Oracle |
+|---|---:|---:|---:|---:|---:|---:|
+| Oracle: 2× H100 (list $10/GPU-h) | 2 | $20.00 | $14,600 | ~16 s (reported) | 35–45 tok/s (reported) | — |
+| **Akamai: 2× RTX PRO 6000, NVFP4** | 2 | **$6.00** | **$4,380** | 18.0 s | 41 tok/s | **−70%** |
+| **Akamai: 2× RTX PRO 6000, FP8** | 2 | **$6.00** | **$4,380** | 21.0 s | 37 tok/s | **−70%** |
+| Akamai: 2× RTX PRO 6000, BF16 | 2 | $6.00 | $4,380 | 27.0 s | 23 tok/s | −70% |
+| Akamai: 2× 4-GPU servers, BF16 TP=4 | 8 | $24.00 | $17,520 | 21.0 s | 66 tok/s | +20% |
+
+Prices: Akamai RTX PRO 6000 at $3.00 per GPU-hour (quote). OCI H100 at $10.00 per GPU-hour (public list, pay as you go; the customer's negotiated price may differ, and OCI may bill CPU and memory separately). The customer's H100 figures are as reported, with unknown precision, concurrency and percentile. GPU cost only.
+
+## 7. Infrastructure observations
 
 - **Two node outages** during testing, both platform-side (host stall, then an ACPI power-off from the platform). Analysis: [`results/node-incidents.md`](../results/node-incidents.md). Production should use ≥2 GPU nodes.
 - **TP=1 runs one GPU at its 600 W limit** (~78 °C) with a slightly lower clock: mild power capping. TP=4 stays far below the limit.

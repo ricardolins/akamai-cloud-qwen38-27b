@@ -1,0 +1,131 @@
+all done 01:24:30
+################ fp8
+=== 01:07:16 in10000_out512_c1
+Output token throughput (tok/s):         41.55     
+Median TTFT (ms):                        1033.14   
+P99 TTFT (ms):                           1046.82   
+Median TPOT (ms):                        22.08     
+=== 01:09:46 in10000_out512_c2
+Output token throughput (tok/s):         72.13     
+Median TTFT (ms):                        1849.35   
+P99 TTFT (ms):                           1950.50   
+Median TPOT (ms):                        24.16     
+=== 01:11:23 in10000_out512_c4
+Output token throughput (tok/s):         122.41    
+Median TTFT (ms):                        3047.61   
+P99 TTFT (ms):                           3804.43   
+Median TPOT (ms):                        26.76     
+=== 01:12:56 in10000_out512_c8
+Output token throughput (tok/s):         192.86    
+Median TTFT (ms):                        4255.94   
+P99 TTFT (ms):                           7517.11   
+Median TPOT (ms):                        33.16     
+=== 01:14:27 in122000_out512_c1
+Output token throughput (tok/s):         14.70     
+Median TTFT (ms):                        20969.86  
+P99 TTFT (ms):                           21124.11  
+Median TPOT (ms):                        27.01     
+=== 01:18:14 in122000_out512_c2
+Output token throughput (tok/s):         17.49     
+Median TTFT (ms):                        31439.02  
+P99 TTFT (ms):                           41641.15  
+Median TPOT (ms):                        52.80     
+=== done 01:21:03
+################ fp8-mtp
+=== 01:08:18 in10000_out512_c1
+Output token throughput (tok/s):         67.85     
+Median TTFT (ms):                        1079.92   
+P99 TTFT (ms):                           1101.67   
+Median TPOT (ms):                        12.05     
+=== 01:09:53 in10000_out512_c2
+Output token throughput (tok/s):         126.15    
+Median TTFT (ms):                        1146.74   
+P99 TTFT (ms):                           3744.19   
+Median TPOT (ms):                        13.15     
+=== 01:10:54 in10000_out512_c4
+Output token throughput (tok/s):         149.67    
+Median TTFT (ms):                        1180.61   
+P99 TTFT (ms):                           5441.02   
+Median TPOT (ms):                        17.25     
+=== 01:12:12 in10000_out512_c8
+Output token throughput (tok/s):         195.66    
+Median TTFT (ms):                        2033.63   
+P99 TTFT (ms):                           9355.07   
+Median TPOT (ms):                        24.71     
+=== 01:13:35 in122000_out512_c1
+Output token throughput (tok/s):         12.95     
+Median TTFT (ms):                        22284.38  
+P99 TTFT (ms):                           22391.06  
+Median TPOT (ms):                        33.01     
+=== 01:17:54 in122000_out512_c2
+Output token throughput (tok/s):         16.65     
+Median TTFT (ms):                        23106.88  
+P99 TTFT (ms):                           43919.54  
+Median TPOT (ms):                        52.76     
+=== done 01:20:57
+################ nvfp4
+=== 01:11:47 in10000_out512_c1
+Output token throughput (tok/s):         48.03     
+Median TTFT (ms):                        780.95    
+P99 TTFT (ms):                           808.17    
+Median TPOT (ms):                        19.31     
+=== 01:13:57 in10000_out512_c2
+Output token throughput (tok/s):         82.88     
+Median TTFT (ms):                        1394.20   
+P99 TTFT (ms):                           1468.83   
+Median TPOT (ms):                        21.45     
+=== 01:15:22 in10000_out512_c4
+Output token throughput (tok/s):         142.00    
+Median TTFT (ms):                        2278.09   
+P99 TTFT (ms):                           2856.35   
+Median TPOT (ms):                        23.75     
+=== 01:16:43 in10000_out512_c8
+Output token throughput (tok/s):         228.11    
+Median TTFT (ms):                        2908.62   
+P99 TTFT (ms):                           5657.11   
+Median TPOT (ms):                        29.35     
+=== 01:18:01 in122000_out512_c1
+Output token throughput (tok/s):         16.83     
+Median TTFT (ms):                        17971.29  
+P99 TTFT (ms):                           18198.07  
+Median TPOT (ms):                        24.27     
+=== 01:21:21 in122000_out512_c2
+Output token throughput (tok/s):         19.82     
+Median TTFT (ms):                        27224.65  
+P99 TTFT (ms):                           36088.56  
+Median TPOT (ms):                        47.57     
+=== done 01:23:53
+################ nvfp4-mtp
+=== 01:10:19 in10000_out512_c1
+Output token throughput (tok/s):         67.50     
+Median TTFT (ms):                        824.68    
+P99 TTFT (ms):                           843.55    
+Median TPOT (ms):                        10.57     
+=== 01:11:54 in10000_out512_c2
+Output token throughput (tok/s):         112.91    
+Median TTFT (ms):                        890.86    
+P99 TTFT (ms):                           3409.75   
+Median TPOT (ms):                        10.37     
+=== 01:12:57 in10000_out512_c4
+Output token throughput (tok/s):         179.58    
+Median TTFT (ms):                        903.78    
+P99 TTFT (ms):                           4457.94   
+Median TPOT (ms):                        14.75     
+=== 01:14:03 in10000_out512_c8
+Output token throughput (tok/s):         220.21    
+Median TTFT (ms):                        1558.49   
+P99 TTFT (ms):                           7459.62   
+Median TPOT (ms):                        20.29     
+=== 01:15:18 in122000_out512_c1
+Output token throughput (tok/s):         14.77     
+Median TTFT (ms):                        19063.06  
+P99 TTFT (ms):                           19113.52  
+Median TPOT (ms):                        28.90     
+=== 01:19:03 in122000_out512_c2
+Output token throughput (tok/s):         18.78     
+Median TTFT (ms):                        19934.43  
+P99 TTFT (ms):                           37742.52  
+Median TPOT (ms):                        65.35     
+=== done 01:21:42
+
+[exited with code 0]

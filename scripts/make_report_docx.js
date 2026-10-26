@@ -31,6 +31,10 @@ function load(tag) {
 }
 const tp4 = [...load("tp4"), ...load("tp4-262k"), ...load("tp4-sweep")];
 const tp1 = [...load("tp1"), ...load("tp1-sweep")];
+const Q = [["BF16", tp1, 1], ["FP8", load("tp1-fp8"), 1], ["FP8 + MTP", load("tp1-fp8-mtp"), 1], ["NVFP4", load("tp1-nvfp4"), 1], ["NVFP4 + MTP", load("tp1-nvfp4-mtp"), 1]];
+const quality = ["bf16", "fp8", "nvfp4"].map((t) => { const f = path.join(ROOT, "results", "quality", `gsm8k-${t}.json`);
+  return fs.existsSync(f) ? { t, ...JSON.parse(fs.readFileSync(f, "utf8")) } : null; }).filter(Boolean);
+const PRICE = { rtx: 3.0, h100: 10.0 };   // USD per GPU-hour: Akamai RTX PRO 6000 (customer quote), OCI H100 list (pay as you go)
 const swept = (rows) => rows.some((r) => r.inp === 10000 && r.c >= 16);
 // Largest measured concurrency (10k prompt) meeting TTFT p99 <= ttftMs and per-user speed >= tps
 const SLO = { ttftMs: 16000, tps: 25 };
@@ -148,6 +152,9 @@ if (swept(tp4) && swept(tp1)) body.push(B([{ text: "Under load, one GPU outserve
   body.push(B([{ text: `Sizing for TTFT ≤ ${SLO.ttftMs / 1000} s and ≥ ${SLO.tps} tok/s per user (10k prompt): `, bold: true },
     `TP=4 serves ${c4cap} concurrent users per 4-GPU server (${fmt(4 / c4cap, 2)} GPU per user); TP=1 serves ${c1cap} per GPU (${fmt(1 / c1cap, 2)} GPU per user). TP=4 needs half the GPUs for this target.`]));
 }
+if (Q[3][1].length) { const nv = find(Q[3][1], 122000, 1), f8 = find(Q[1][1], 122000, 1);
+  body.push(B([{ text: "Native NVFP4/FP8 on Blackwell close the gap on ONE GPU: ", bold: true },
+    `at ~122k, NVFP4 gives TTFT ${fmt(nv.ttft50 / 1000, 1)} s and ${fmt(nv.tpsUser)} tok/s, FP8 ${fmt(f8.ttft50 / 1000, 1)} s and ${fmt(f8.tpsUser)} tok/s — on a $3/h GPU, vs the customer's ~16 s and 35–45 tok/s on a $10/h H100. At 10k, one FP8/NVFP4 GPU keeps ≥25 tok/s for at least 8 concurrent users.`])); }
 body.push(B([{ text: "Concurrency: ", bold: true },
   `with 10k prompts TP=4 keeps ≥35 tok/s per user up to 4 concurrent users (${fmt(c4 && c4.tpsUser)} tok/s); at 8 users it drops to ${fmt(c8 && c8.tpsUser)} tok/s.`]));
 
@@ -260,10 +267,71 @@ if (swept(tp4) && swept(tp1)) {
   body.push(note(`"Concurrent users" = requests in flight at the same time. At ${perServer4} concurrent requests a TP=4 server completes ~${fmt(perServer4 / find(tp4, 10000, perServer4).e2e50, 2)} requests/s (~${fmt(3600 * perServer4 / find(tp4, 10000, perServer4).e2e50)} per hour). Levels between 8 and 16 were not measured, so TP=4 capacity is between ${perServer4} and ~12; ${perServer4} is the safe measured value. TP=1 at 2 users gives ${fmt(b2 && b2.tpsUser, 1)} tok/s — if that is accepted as 25, TP=1 matches TP=4 (8 users per server). Valid for 10k prompts with 512-token answers; FP8 weights would likely raise TP=1 capacity (not measured).`));
 }
 
-// 5. GPU telemetry
-body.push(H1("5. GPU telemetry during the runs"));
+// 5. Quantization on one GPU
+if (Q[1][1].length) {
+  body.push(H1("5. FP8, NVFP4 and MTP on a single GPU (TP=1)"));
+  body.push(P("Blackwell tensor cores run FP8 and FP4 (NVFP4) natively. Quantized weights cut the bytes read per generated token (decode) and use the faster low-precision math for prompt processing (TTFT). MTP (multi-token prediction) uses the model's built-in draft head to propose 3 tokens per step. The four quantized servers ran at the same time, one per GPU, on the same node."));
+  const q122 = (rows) => find(rows, 122000, 1) || find(rows, 120000, 1);
+  body.push(H2("5.1 Single user"));
+  body.push(table(
+    [{ h: "Precision (1 GPU)", w: 3 }, { h: "Weights (GiB)", w: 2 }, { h: "TTFT 10k (s)", w: 2 }, { h: "tok/s per user 10k", w: 2 },
+     { h: "TTFT ~122k (s)", w: 2 }, { h: "tok/s per user ~122k", w: 2 }],
+    Q.map(([n, rows]) => { const a = find(rows, 10000, 1) || {}, b = q122(rows) || {};
+      const w = { "BF16": "51.7", "FP8": "28.0", "FP8 + MTP": "28.0", "NVFP4": "23.2", "NVFP4 + MTP": "23.2" }[n];
+      return [n, w, fmt(a.ttft50 / 1000, 2), fmt(a.tpsUser, 1), fmt(b.ttft50 / 1000, 1) + (b.inp === 120000 ? " (120k)" : ""), fmt(b.tpsUser, 1)]; }),
+    { fills: (r, c) => (c === 5 ? (q122(Q[r][1]) && q122(Q[r][1]).tpsUser >= 35 ? C.good : C.bad) : undefined) },
+  ));
+  body.push(note("Green/orange in the last column: generation speed vs the 35–45 tok/s target at ~122k. BF16 single-GPU long-context figure is from the 120k run. With MTP, ITL is per accepted chunk, so per-user speed uses TPOT."));
+  body.push(H2("5.2 Concurrency with a 10k prompt (per GPU)"));
+  const levels = [1, 2, 4, 8];
+  body.push(table(
+    [{ h: "Precision (1 GPU)", w: 3 }, ...levels.map((c) => ({ h: `${c} user${c > 1 ? "s" : ""}: tok/s each / TTFT p99`, w: 3 })), { h: "Peak total tok/s", w: 2 }],
+    Q.map(([n, rows]) => [n, ...levels.map((c) => { const r = find(rows, 10000, c); return r ? `${fmt(r.tpsUser, 1)} / ${fmt(r.ttft99 / 1000, 1)} s` : "—"; }),
+      fmt(Math.max(...conc(rows).filter((r) => r.c <= 8).map((r) => r.tpsTotal)))]),
+    { fills: (ri, ci) => { if (ci === 0 || ci > 4) return undefined; const r = find(Q[ri][1], 10000, levels[ci - 1]);
+      return r ? (r.tpsUser >= 25 && r.ttft99 <= 16000 ? C.good : C.bad) : undefined; } },
+  ));
+  body.push(note("Green: meets ≥25 tok/s per user and TTFT p99 ≤ 16 s. Quantized runs stopped at 8 users, so their capacity is at least 8 per GPU."));
+  const mtp = ["fp8-mtp", "nvfp4-mtp"].map((t) => { const f = path.join(ROOT, "results", `mtp-metrics-${t}.txt`); if (!fs.existsSync(f)) return null;
+    const v = {}; for (const l of fs.readFileSync(f, "utf8").split("\n")) { const m = l.match(/^(vllm:[a-z_]+)(\{[^}]*\})?\s+([0-9.e+]+)/); if (m && !/per_pos/.test(m[1])) v[m[1]] = (v[m[1]] || 0) + Number(m[3]); }
+    return [t.toUpperCase().replace("-MTP", " + MTP"), v["vllm:spec_decode_num_accepted_tokens_total"] / v["vllm:spec_decode_num_draft_tokens_total"],
+            v["vllm:spec_decode_num_accepted_tokens_total"] / v["vllm:spec_decode_num_drafts_total"]]; }).filter(Boolean);
+  if (mtp.length) {
+    body.push(H2("5.3 MTP: where it helps and where it hurts"));
+    body.push(table([{ h: "Server", w: 3 }, { h: "Draft acceptance", w: 2 }, { h: "Tokens per step (incl. verified)", w: 3 }, { h: "Effect", w: 6, align: AlignmentType.LEFT }],
+      mtp.map(([n, a, s]) => [n, `${fmt(a * 100, 1)}%`, fmt(s + 1, 2), "10k prompt: ~1.8× faster generation. ~122k prompt: slower generation and TTFT than without MTP"])));
+    body.push(note("Measured with random-token prompts; acceptance on real text may differ. At very long context the draft head's own attention over 122k tokens costs more than the accepted tokens save."));
+  }
+  if (quality.length) {
+    body.push(H2("5.4 Quality check (GSM8K)"));
+    const base = quality.find((q) => q.t === "bf16");
+    body.push(table([{ h: "Precision", w: 2 }, { h: "Questions", w: 2 }, { h: "Correct", w: 2 }, { h: "Accuracy", w: 2 }, { h: "vs BF16", w: 2 }],
+      quality.map((q) => [q.t.toUpperCase(), q.n, q.correct, `${fmt(q.accuracy * 100, 1)}%`, base ? `${q.accuracy >= base.accuracy ? "+" : ""}${fmt((q.accuracy - base.accuracy) * 100, 1)} pts` : "—"])));
+    body.push(note("First 250 GSM8K test questions, temperature 0, thinking disabled, exact numeric match. A sanity check of quantization loss on short prompts, not a full evaluation; long-context quality was not evaluated."));
+  }
+  // cost vs H100
+  body.push(H2("5.5 Cost vs 2× H100 (Oracle Cloud) for the ~122k workload"));
+  const f8 = find(Q[1][1], 122000, 1), nv = find(Q[3][1], 122000, 1), b4 = find(tp4, 120000, 1), b1 = find(tp1, 120000, 1);
+  const row = (name, gpus, price, r, ttftTxt, tpsTxt) => [name, gpus, `$${fmt(gpus * price, 2)}`, `$${fmt(gpus * price * 730)}`, ttftTxt || `${fmt(r.ttft50 / 1000, 1)} s`, tpsTxt || `${fmt(r.tpsUser)} tok/s`,
+    `${gpus * price > 2 * PRICE.h100 ? "+" : ""}${fmt((gpus * price / (2 * PRICE.h100) - 1) * 100)}%`];
+  body.push(table(
+    [{ h: "Option for 2 simultaneous ~122k requests", w: 5 }, { h: "GPUs", w: 1 }, { h: "$/hour", w: 2 }, { h: "$/month (730 h)", w: 2 }, { h: "TTFT", w: 2 }, { h: "Generation", w: 2 }, { h: "Cost vs Oracle", w: 2 }],
+    [
+      ["Oracle: 2× H100 (customer, list price $10/GPU-h)", 2, "$20.00", `$${fmt(20 * 730)}`, "~16 s (reported)", "35–45 tok/s (reported)", "—"],
+      row("Akamai: 2× RTX PRO 6000, NVFP4, TP=1", 2, PRICE.rtx, nv),
+      row("Akamai: 2× RTX PRO 6000, FP8, TP=1", 2, PRICE.rtx, f8),
+      row("Akamai: 2× RTX PRO 6000, BF16, TP=1 (120k)", 2, PRICE.rtx, b1),
+      row("Akamai: 2× (4× RTX PRO 6000), BF16, TP=4 (120k)", 8, PRICE.rtx, b4),
+    ],
+    { fills: (r, c) => (r === 1 && c >= 4 ? C.good : undefined) },
+  ));
+  body.push(note("Prices: Akamai RTX PRO 6000 at $3.00 per GPU-hour (quote); OCI H100 at $10.00 per GPU-hour (public list, pay as you go; the customer's negotiated price may differ and OCI may bill CPU/memory separately). The customer's H100 numbers are as reported, with unknown precision, concurrency and percentile. GPU cost only (no storage or egress)."));
+}
+
+// 6. GPU telemetry
+body.push(H1("6. GPU telemetry during the runs"));
 const tel = [["TP=4 — 8k to 120k + concurrency", "tp4"], ["TP=4 — 240k", "tp4-262k"], ["TP=1 — all scenarios", "tp1"],
-             ["TP=4 — concurrency sweep", "tp4-sweep"], ["TP=1 — concurrency sweep", "tp1-sweep"]]
+             ["TP=4 — concurrency sweep", "tp4-sweep"], ["TP=1 — concurrency sweep", "tp1-sweep"], ["TP=1 FP8", "tp1-fp8"], ["TP=1 FP8 + MTP", "tp1-fp8-mtp"], ["TP=1 NVFP4", "tp1-nvfp4"], ["TP=1 NVFP4 + MTP", "tp1-nvfp4-mtp"]]
   .map(([n, t]) => [n, gpuStats(t)]).filter(([, s]) => s);
 body.push(table(
   [{ h: "Run", w: 4 }, { h: "GPUs sampled", w: 2 }, { h: "Power avg busy (W)", w: 2 }, { h: "Power max (W)", w: 2 },
@@ -272,16 +340,16 @@ body.push(table(
 ));
 body.push(note("nvidia-smi dmon every 5 s; power limit 600 W per GPU. With TP=4 the load is spread over 4 GPUs and stays far below the limit. With TP=1 the single GPU runs at the 600 W limit (short peaks above it) and ~78 °C, with a slightly lower average clock: mild power capping, which is part of why TP=1 is slower."));
 
-// 6. Incidents
-body.push(H1("6. Incidents during testing"));
+// 7. Incidents
+body.push(H1("7. Incidents during testing"));
 body.push(table([{ h: "Time (UTC)", w: 2 }, { h: "What happened", w: 5, align: AlignmentType.LEFT }, { h: "Cause (from the node's journal)", w: 5, align: AlignmentType.LEFT }, { h: "Impact", w: 3, align: AlignmentType.LEFT }], [
   ["2026-10-25 20:46:56", "Node stopped abruptly during the first TP=4 run", "Host-side failure: guest frozen ~3.2 s at 20:42:44 (clocksource warning), then stopped; no GPU, PCIe, OOM or kernel errors", "Run discarded and repeated from scratch"],
   ["2026-10-25 22:30:24", "Node powered off at the start of the TP=1 sweep", "Platform ACPI power-button shutdown (repeated every 10 s), not triggered inside the VM", "TP=1 sweep restarted after reboot"],
 ], { firstColLeft: true }));
 body.push(note("Neither incident was caused by the workload. Details: results/node-incidents.md in the repository."));
 
-// 7. Method
-body.push(H1("7. Methodology notes"));
+// 8. Method
+body.push(H1("8. Methodology notes"));
 body.push(B("Prefix caching disabled so every prompt is fully prefilled (otherwise repeated prompts would show artificially low TTFT)."));
 body.push(B("Fixed-length random prompts (--random-range-ratio 0) and fixed 512-token outputs (--ignore-eos), so all metrics are comparable across prompt sizes."));
 body.push(B("Benchmark client runs inside the server pod: results exclude client-to-server network latency."));

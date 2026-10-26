@@ -1,0 +1,158 @@
+# Quantization comparison: four independent TP=1 servers, one per GPU, running at the same time.
+#   fp8        Qwen/Qwen3.8-27B-FP8 (official, block-scaled FP8, native FP8 tensor cores)
+#   fp8-mtp    same + Multi-Token Prediction (built-in draft head, 3 speculative tokens)
+#   nvfp4      Inferact/Qwen3.8-27B-NVFP4 (NVFP4 W4A4, native FP4 tensor cores on Blackwell)
+#   nvfp4-mtp  same + MTP
+# All other flags identical to the BF16 runs (k8s/11-vllm-qwen38-27b-tp1.yaml), except --max-model-len 131072 (122k + output).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: qwen-fp8, namespace: llm-bench, labels: {app: qwen-fp8, bench: quant}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: qwen-fp8}}
+  template:
+    metadata: {labels: {app: qwen-fp8, bench: quant}}
+    spec:
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:v0.32.0
+        args:
+        - Qwen/Qwen3.8-27B-FP8
+        - --served-model-name=qwen-fp8
+        - --tensor-parallel-size=1
+        - --max-model-len=131072
+        - --max-num-seqs=256
+        - --language-model-only
+        - --reasoning-parser=qwen3
+        - --gpu-memory-utilization=0.90
+        - --no-enable-prefix-caching
+        - --port=8000
+
+        env:
+        - {name: HF_HOME, value: /models/hf}
+        ports: [{containerPort: 8000, name: http}]
+        resources:
+          limits: {nvidia.com/gpu: 1}
+          requests: {nvidia.com/gpu: 1, cpu: "8", memory: 64Gi}
+        readinessProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 10}
+        startupProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 15, failureThreshold: 160}
+        volumeMounts: [{name: models, mountPath: /models}, {name: shm, mountPath: /dev/shm}]
+      volumes:
+      - {name: models, hostPath: {path: /var/lib/llm-models, type: DirectoryOrCreate}}
+      - {name: shm, emptyDir: {medium: Memory, sizeLimit: 16Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: qwen-fp8-mtp, namespace: llm-bench, labels: {app: qwen-fp8-mtp, bench: quant}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: qwen-fp8-mtp}}
+  template:
+    metadata: {labels: {app: qwen-fp8-mtp, bench: quant}}
+    spec:
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:v0.32.0
+        args:
+        - Qwen/Qwen3.8-27B-FP8
+        - --served-model-name=qwen-fp8-mtp
+        - --tensor-parallel-size=1
+        - --max-model-len=131072
+        - --max-num-seqs=256
+        - --language-model-only
+        - --reasoning-parser=qwen3
+        - --gpu-memory-utilization=0.90
+        - --no-enable-prefix-caching
+        - --port=8000
+        - '--speculative-config={"method":"mtp","num_speculative_tokens":3}'
+        env:
+        - {name: HF_HOME, value: /models/hf}
+        ports: [{containerPort: 8000, name: http}]
+        resources:
+          limits: {nvidia.com/gpu: 1}
+          requests: {nvidia.com/gpu: 1, cpu: "8", memory: 64Gi}
+        readinessProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 10}
+        startupProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 15, failureThreshold: 160}
+        volumeMounts: [{name: models, mountPath: /models}, {name: shm, mountPath: /dev/shm}]
+      volumes:
+      - {name: models, hostPath: {path: /var/lib/llm-models, type: DirectoryOrCreate}}
+      - {name: shm, emptyDir: {medium: Memory, sizeLimit: 16Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: qwen-nvfp4, namespace: llm-bench, labels: {app: qwen-nvfp4, bench: quant}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: qwen-nvfp4}}
+  template:
+    metadata: {labels: {app: qwen-nvfp4, bench: quant}}
+    spec:
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:v0.32.0
+        args:
+        - Inferact/Qwen3.8-27B-NVFP4
+        - --served-model-name=qwen-nvfp4
+        - --tensor-parallel-size=1
+        - --max-model-len=131072
+        - --max-num-seqs=256
+        - --language-model-only
+        - --reasoning-parser=qwen3
+        - --gpu-memory-utilization=0.90
+        - --no-enable-prefix-caching
+        - --port=8000
+
+        env:
+        - {name: HF_HOME, value: /models/hf}
+        ports: [{containerPort: 8000, name: http}]
+        resources:
+          limits: {nvidia.com/gpu: 1}
+          requests: {nvidia.com/gpu: 1, cpu: "8", memory: 64Gi}
+        readinessProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 10}
+        startupProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 15, failureThreshold: 160}
+        volumeMounts: [{name: models, mountPath: /models}, {name: shm, mountPath: /dev/shm}]
+      volumes:
+      - {name: models, hostPath: {path: /var/lib/llm-models, type: DirectoryOrCreate}}
+      - {name: shm, emptyDir: {medium: Memory, sizeLimit: 16Gi}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: qwen-nvfp4-mtp, namespace: llm-bench, labels: {app: qwen-nvfp4-mtp, bench: quant}}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: qwen-nvfp4-mtp}}
+  template:
+    metadata: {labels: {app: qwen-nvfp4-mtp, bench: quant}}
+    spec:
+      containers:
+      - name: vllm
+        image: vllm/vllm-openai:v0.32.0
+        args:
+        - Inferact/Qwen3.8-27B-NVFP4
+        - --served-model-name=qwen-nvfp4-mtp
+        - --tensor-parallel-size=1
+        - --max-model-len=131072
+        - --max-num-seqs=256
+        - --language-model-only
+        - --reasoning-parser=qwen3
+        - --gpu-memory-utilization=0.90
+        - --no-enable-prefix-caching
+        - --port=8000
+        - '--speculative-config={"method":"mtp","num_speculative_tokens":3}'
+        env:
+        - {name: HF_HOME, value: /models/hf}
+        ports: [{containerPort: 8000, name: http}]
+        resources:
+          limits: {nvidia.com/gpu: 1}
+          requests: {nvidia.com/gpu: 1, cpu: "8", memory: 64Gi}
+        readinessProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 10}
+        startupProbe: {httpGet: {path: /health, port: 8000}, periodSeconds: 15, failureThreshold: 160}
+        volumeMounts: [{name: models, mountPath: /models}, {name: shm, mountPath: /dev/shm}]
+      volumes:
+      - {name: models, hostPath: {path: /var/lib/llm-models, type: DirectoryOrCreate}}
+      - {name: shm, emptyDir: {medium: Memory, sizeLimit: 16Gi}}

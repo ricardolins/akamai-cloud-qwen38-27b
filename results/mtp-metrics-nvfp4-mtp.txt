@@ -1,0 +1,6 @@
+vllm:spec_decode_num_drafts_total{engine="0",model_name="qwen-nvfp4-mtp"} 14452.0
+vllm:spec_decode_num_draft_tokens_total{engine="0",model_name="qwen-nvfp4-mtp"} 43356.0
+vllm:spec_decode_num_accepted_tokens_total{engine="0",model_name="qwen-nvfp4-mtp"} 23979.0
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="qwen-nvfp4-mtp",position="0"} 9249.0
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="qwen-nvfp4-mtp",position="1"} 7756.0
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="qwen-nvfp4-mtp",position="2"} 6974.0

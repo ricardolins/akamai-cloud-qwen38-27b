@@ -189,6 +189,42 @@ kubectl apply -f k8s/11-vllm-qwen38-27b-tp1.yaml
 
 With TP=1, **31.6 GiB** is left for KV → **511,103 tokens** of cache (versus 4.5 million with TP=4). A 240k prompt still fits, but only ~2 of that size at the same time.
 
+### 4.7 Quantized weights on one GPU: FP8, NVFP4 and MTP
+
+**Why:** decode is limited by the bytes read per token, and prefill by math throughput. Blackwell tensor cores run **FP8 and FP4 (NVFP4) natively**. The H100 has FP8 but no FP4. Smaller weights mean faster decode, and lower-precision math means faster prefill, on a single $3/h GPU.
+
+Manifest: [`k8s/20-vllm-tp1-quantized.yaml`](../k8s/20-vllm-tp1-quantized.yaml). Four independent TP=1 servers, one per GPU, run at the same time:
+
+| Server | Checkpoint | Weights in GPU memory | Extra flag |
+|---|---|---|---|
+| `qwen-fp8` | `Qwen/Qwen3.8-27B-FP8` (official) | 28.0 GiB | — |
+| `qwen-fp8-mtp` | same | 28.0 GiB | `--speculative-config={"method":"mtp","num_speculative_tokens":3}` |
+| `qwen-nvfp4` | `Inferact/Qwen3.8-27B-NVFP4` (from the vLLM recipe) | 23.2 GiB | — |
+| `qwen-nvfp4-mtp` | same | 23.2 GiB | MTP as above |
+
+How to confirm NVFP4 really runs on the FP4 tensor cores (and is not just dequantized to BF16):
+```
+Using FlashInferCutlassNvFp4LinearKernel for NVFP4 GEMM
+```
+
+Run the comparison set (10k prompt at 1/2/4/8 users + 122k at 1/2 users) in each pod:
+```bash
+MODEL=qwen-fp8 /tmp/bench.sh tp1-fp8 512 quant
+```
+
+MTP acceptance comes from the server's Prometheus metrics:
+```bash
+curl -s localhost:8000/metrics | grep -E 'spec_decode_num_(accepted|draft)_tokens_total|spec_decode_num_drafts_total'
+```
+
+Quality check ([`scripts/gsm8k_eval.py`](../scripts/gsm8k_eval.py)): the first 250 GSM8K test questions, temperature 0, thinking disabled, exact numeric answer. It runs against BF16, FP8 and NVFP4 the same way. It uses only the Python standard library (the dataset comes from the Hugging Face datasets-server JSON API), because the vLLM image does not ship `pandas`.
+
+> **Pitfalls**
+> - With MTP, **ITL** is measured per accepted *chunk* of tokens, so it looks worse (~35 ms) even when generation is much faster. Use **TPOT** (and tok/s per user = 1000 / TPOT) to compare speed.
+> - MTP helps at 10k but **hurts at ~122k**: the draft head's attention over the long context costs more than the accepted tokens save. Enable it per workload, not by default.
+> - Random-token prompts are fine for TTFT/decode speed, but MTP acceptance on real text can differ. Re-measure acceptance on production prompts.
+> - The four quantized servers shared one host while running. That is realistic for one-replica-per-GPU serving, but slightly pessimistic compared with a single server alone.
+
 ---
 
 ## 5. Incident during the test

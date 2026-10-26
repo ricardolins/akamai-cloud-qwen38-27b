@@ -1,0 +1,5 @@
+bf16: acc 92.8% ±3.2% (95% CI) | wrong 18 | no number extracted 0
+fp8: acc 92.8% ±3.2% (95% CI) | wrong 18 | no number extracted 0
+nvfp4: acc 95.6% ±2.5% (95% CI) | wrong 11 | no number extracted 0
+fp8 vs bf16: both right 228, only bf16 right 4, only fp8 right 4
+nvfp4 vs bf16: both right 230, only bf16 right 2, only nvfp4 right 9
